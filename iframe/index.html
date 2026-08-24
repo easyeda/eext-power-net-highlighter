@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>电源网络高亮助手 - 规则配置</title>
+<style>
+	:root {
+		--bg: #f5f6f8;
+		--panel: #ffffff;
+		--border: #dcdfe6;
+		--primary: #2563eb;
+		--primary-hover: #1d4ed8;
+		--danger: #dc2626;
+		--text: #303133;
+		--text-sec: #909399;
+	}
+	* { box-sizing: border-box; margin: 0; padding: 0; }
+	body {
+		font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+		font-size: 13px;
+		color: var(--text);
+		background: var(--bg);
+		padding: 12px;
+		height: 100vh;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		overflow: hidden;
+	}
+	h2 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+	h2 .tag { font-size: 11px; font-weight: 400; color: var(--text-sec); }
+	section {
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 10px;
+	}
+	section h3 { font-size: 12.5px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+	label.opt { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; user-select: none; }
+	label.opt span.hint { color: var(--text-sec); font-size: 11.5px; }
+	table { width: 100%; border-collapse: collapse; }
+	th, td { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+	th { font-size: 11.5px; color: var(--text-sec); font-weight: 500; background: #fafafa; }
+	td input[type="text"] { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12.5px; }
+	td input[type="text"]:focus { outline: none; border-color: var(--primary); }
+	select { padding: 4px 4px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: var(--panel); }
+	select:focus { outline: none; border-color: var(--primary); }
+	.badge { display: inline-block; font-size: 10.5px; padding: 1px 6px; border-radius: 8px; background: #eff6ff; color: var(--primary); }
+	.badge.builtin { background: #f0f9eb; color: #67c23a; }
+	button {
+		padding: 5px 12px;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--panel);
+		color: var(--text);
+		font-size: 12.5px;
+		cursor: pointer;
+	}
+	button:hover { border-color: var(--primary); color: var(--primary); }
+	button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+	button.primary:hover { background: var(--primary-hover); }
+	button.danger-text { border: none; background: none; color: var(--danger); padding: 2px 6px; }
+	button.danger-text:hover { text-decoration: underline; }
+	.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+	.btn-row .spacer { flex: 1; }
+	#rulesWrap { max-height: 200px; overflow-y: auto; }
+	.style-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+	.style-row label { display: flex; align-items: center; gap: 6px; }
+	.style-row input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+	.style-row input[type="number"] { width: 56px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; }
+	#result {
+		flex: 1;
+		overflow-y: auto;
+		background: var(--panel);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 10px;
+		font-size: 12.5px;
+		white-space: pre-wrap;
+	}
+	#result .placeholder { color: var(--text-sec); }
+	.net-item { padding: 3px 0; border-bottom: 1px dashed var(--border); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+	.net-item b { font-size: 13px; }
+	.net-item .src { color: var(--text-sec); font-size: 11.5px; }
+	.status-bar { font-size: 12px; color: var(--text-sec); min-height: 16px; }
+	.status-bar.ok { color: #16a34a; }
+	.status-bar.err { color: var(--danger); }
+</style>
+</head>
+<body>
+	<h2>⚡ 电源网络高亮助手 <span class="tag">规则配置</span></h2>
+
+	<section>
+		<h3>检测选项</h3>
+		<label class="opt"><input type="checkbox" id="optDetectNetFlags"> 检测网络标识符（VCC/GND 电源符号所在网络）<span class="hint">— 结构检测，最可靠</span></label>
+		<label class="opt"><input type="checkbox" id="optMatchNetLabels"> 规则匹配网络标签</label>
+		<label class="opt"><input type="checkbox" id="optMatchNetPorts"> 规则匹配网络端口</label>
+		<label class="opt"><input type="checkbox" id="optMatchWires"> 规则匹配导线网络名 <span class="hint">— 一般无需开启</span></label>
+		<label class="opt"><input type="checkbox" id="optMatchPins"> 引脚规则匹配 <span class="hint">— U3.3 / U*.LX 等引脚所在网络</span></label>
+		<label class="opt"><input type="checkbox" id="optCaseInsensitive"> 规则匹配忽略大小写</label>
+		<label class="opt"><input type="checkbox" id="optAlsoSelect"> 高亮同时选中 <span class="hint">— 默认仅描线高亮</span></label>
+	</section>
+
+	<section>
+		<h3>高亮样式</h3>
+		<div class="style-row">
+			<label>描线颜色 <input type="color" id="optColor"></label>
+			<label>描线线宽 <input type="number" id="optLineWidth" min="1" max="10" step="1"></label>
+		</div>
+	</section>
+
+	<section>
+		<h3>匹配规则 <span class="tag" style="font-weight:400;color:var(--text-sec)">（* 任意字符串，? 单个字符）</span></h3>
+		<div id="rulesWrap">
+			<table>
+				<thead>
+					<tr><th style="width:34px">启用</th><th style="width:96px">名称</th><th>匹配模式</th><th style="width:64px">对象</th><th style="width:56px">类型</th><th style="width:40px">操作</th></tr>
+				</thead>
+				<tbody id="rulesBody"></tbody>
+			</table>
+		</div>
+		<div class="btn-row" style="margin-top:8px">
+			<button id="btnAddNetRule">＋ 网络规则</button>
+			<button id="btnAddPinRule">＋ 引脚规则</button>
+			<button id="btnRestore">恢复内置默认</button>
+		</div>
+	</section>
+
+	<div class="btn-row">
+		<button class="primary" id="btnRun">检测并高亮</button>
+		<button id="btnClear">清除高亮</button>
+		<div class="spacer"></div>
+		<button id="btnSave" class="primary">保存配置</button>
+		<button id="btnClose">关闭</button>
+	</div>
+
+	<div id="result"><span class="placeholder">点击「检测并高亮」查看识别结果</span></div>
+	<div class="status-bar" id="status"></div>
+
+<script>
+	/* ===================== 配置与检测核心逻辑（与 dist/index.js 保持一致） ===================== */
+
+	var STORAGE_KEY = 'powerNetHighlighter.config';
+
+	var COMP_TYPE = { PART: 'part', NET_FLAG: 'netflag', NET_LABEL: 'netlabel', NET_PORT: 'netport' };
+	var DOC_TYPE_SCHEMATIC_PAGE = 1;
+	var DEFAULT_COLOR = '#e63228';
+	var PIN_STUB_LEN = 7;
+
+	var BUILTIN_RULES = [
+		{ id: 'b-gnd', name: 'GND 系列', pattern: '*gnd*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-earth', name: '大地 / 保护地', pattern: '*earth*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-pe', name: '保护地 PE', pattern: 'pe', target: 'net', enabled: false, builtin: true },
+		{ id: 'b-vcc', name: 'VCC 电源', pattern: 'vcc*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-vdd', name: 'VDD 电源', pattern: '*vdd*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-vee', name: 'VEE 负电源', pattern: '*vee*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-rail', name: '电压轨 (+3V3/+5V/...)', pattern: '+*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-rail-neg', name: '负电压轨 (-5V/...)', pattern: '-*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-vbat', name: '电池 VBAT', pattern: '*vbat*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-batt', name: '电池 BAT+/BATT', pattern: '*batt*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-vbus', name: 'USB VBUS', pattern: 'vbus*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-vsys', name: '系统电源 VSYS', pattern: 'vsys*', target: 'net', enabled: true, builtin: true },
+		{ id: 'b-avdd', name: '模拟电源 AVDD/AVCC', pattern: 'a*v*d*', target: 'net', enabled: false, builtin: true },
+		{ id: 'b-pin-lx', name: 'DCDC 开关节点 LX（引脚）', pattern: '*.lx', target: 'pin', enabled: true, builtin: true },
+		{ id: 'b-pin-ph', name: 'DCDC 开关节点 PH（引脚）', pattern: '*.ph', target: 'pin', enabled: true, builtin: true },
+		{ id: 'b-pin-sw', name: 'DCDC 开关节点 SW（引脚）', pattern: '*.sw', target: 'pin', enabled: false, builtin: true }
+	];
+
+	var DEFAULT_OPTIONS = {
+		detectNetFlags: true,
+		matchNetLabels: true,
+		matchNetPorts: true,
+		matchWires: false,
+		matchPins: true,
+		caseInsensitive: true,
+		alsoSelect: false,
+		highlightColor: DEFAULT_COLOR,
+		lineWidth: 3
+	};
+
+	function defaultConfig() {
+		return { version: 2, rules: BUILTIN_RULES.map(function (r) { return Object.assign({}, r); }), options: Object.assign({}, DEFAULT_OPTIONS) };
+	}
+
+	function loadConfig() {
+		try {
+			var saved = eda.sys_Storage.getExtensionUserConfig(STORAGE_KEY);
+			if (!saved || typeof saved !== 'object') return defaultConfig();
+			var cfg = defaultConfig();
+			if (Array.isArray(saved.rules)) {
+				var savedBuiltins = new Map();
+				saved.rules.filter(function (r) { return r.builtin; }).forEach(function (r) { savedBuiltins.set(r.id, r); });
+				cfg.rules = cfg.rules.map(function (b) {
+					var s = savedBuiltins.get(b.id);
+					return s ? Object.assign({}, b, {
+						enabled: !!s.enabled,
+						pattern: (typeof s.pattern === 'string' && s.pattern) ? s.pattern : b.pattern
+					}) : b;
+				});
+				saved.rules.forEach(function (r) {
+					if (!r.builtin && r.id && typeof r.pattern === 'string') {
+						cfg.rules.push({ id: r.id, name: r.name || r.pattern, pattern: r.pattern, target: r.target === 'pin' ? 'pin' : 'net', enabled: r.enabled !== false, builtin: false });
+					}
+				});
+			}
+			if (saved.options && typeof saved.options === 'object') cfg.options = Object.assign({}, DEFAULT_OPTIONS, saved.options);
+			if (typeof cfg.options.highlightColor !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(cfg.options.highlightColor)) cfg.options.highlightColor = DEFAULT_COLOR;
+			if (!(cfg.options.lineWidth >= 1 && cfg.options.lineWidth <= 10)) cfg.options.lineWidth = 3;
+			return cfg;
+		} catch (e) {
+			return defaultConfig();
+		}
+	}
+
+	function compilePattern(pattern, caseInsensitive) {
+		var re = '^';
+		var p = String(pattern);
+		for (var i = 0; i < p.length; i++) {
+			var ch = p[i];
+			if (ch === '*') re += '.*';
+			else if (ch === '?') re += '.';
+			else if (/[a-zA-Z0-9_]/.test(ch)) re += ch;
+			else re += '\\' + ch;
+		}
+		return new RegExp(re + '$', caseInsensitive ? 'i' : '');
+	}
+
+	function parseColor(hex) {
+		var m = /^#?([0-9a-fA-F]{6})$/.test(hex) ? hex.slice(-6) : DEFAULT_COLOR.slice(-6);
+		return { r: parseInt(m.slice(0, 2), 16), g: parseInt(m.slice(2, 4), 16), b: parseInt(m.slice(4, 6), 16), alpha: 255 };
+	}
+
+	var pkey = function (x, y) { return Math.round(x * 1000) / 1000 + ',' + Math.round(y * 1000) / 1000; };
+
+	function parseWireSegments(line) {
+		var pts = [], segs = [];
+		if (!Array.isArray(line) || line.length < 4) return { pts: pts, segs: segs };
+		for (var i = 0; i + 3 < line.length; i += 4) {
+			var x1 = line[i], y1 = line[i + 1], x2 = line[i + 2], y2 = line[i + 3];
+			pts.push([x1, y1], [x2, y2]);
+			if (x1 === x2 && y1 === y2) continue;
+			segs.push([x1, y1, x2, y2]);
+		}
+		return { pts: pts, segs: segs };
+	}
+
+	function pointOnSeg(px, py, s) {
+		var cross = (s[2] - s[0]) * (py - s[1]) - (s[3] - s[1]) * (px - s[0]);
+		if (Math.abs(cross) > 0.001) return false;
+		return Math.min(s[0], s[2]) - 0.001 <= px && px <= Math.max(s[0], s[2]) + 0.001 && Math.min(s[1], s[3]) - 0.001 <= py && py <= Math.max(s[1], s[3]) + 0.001;
+	}
+
+	function detectPowerNets() {
+		var cfg = state.config;
+		var options = cfg.options;
+
+		var netMatchers = cfg.rules.filter(function (r) { return r.enabled && r.pattern && (r.target || 'net') === 'net'; })
+			.map(function (r) { return { name: r.name || r.pattern, re: compilePattern(r.pattern, options.caseInsensitive) }; });
+		var pinMatchers = cfg.rules.filter(function (r) { return r.enabled && r.pattern && r.target === 'pin'; })
+			.map(function (r) { return { name: r.name || r.pattern, re: compilePattern(r.pattern, options.caseInsensitive) }; });
+
+		function matchNet(net) {
+			for (var i = 0; i < netMatchers.length; i++) if (netMatchers[i].re.test(net)) return netMatchers[i].name;
+			return null;
+		}
+
+		return (async function () {
+			var wires = (await eda.sch_PrimitiveWire.getAll()) || [];
+			var wireData = wires.map(function (w) {
+				var parsed = parseWireSegments(w.getState_Line());
+				return { net: w.getState_Net() || '', pts: parsed.pts, segs: parsed.segs };
+			}).filter(function (wd) { return wd.pts.length > 0; });
+
+			var parent = wireData.map(function (_, i) { return i; });
+			function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+			function union(a, b) { parent[find(a)] = find(b); }
+
+			var endpointMap = new Map();
+			wireData.forEach(function (wd, i) {
+				wd.pts.forEach(function (p) {
+					var k = pkey(p[0], p[1]);
+					if (!endpointMap.has(k)) endpointMap.set(k, []);
+					endpointMap.get(k).push(i);
+				});
+			});
+			endpointMap.forEach(function (idxs) { for (var i = 1; i < idxs.length; i++) union(idxs[0], idxs[i]); });
+			endpointMap.forEach(function (idxs, k) {
+				var parts = k.split(',').map(Number);
+				var px = parts[0], py = parts[1];
+				var root = idxs[0];
+				for (var j = 0; j < wireData.length; j++) {
+					if (find(j) === find(root)) continue;
+					for (var s = 0; s < wireData[j].segs.length; s++) {
+						if (pointOnSeg(px, py, wireData[j].segs[s])) { union(root, j); break; }
+					}
+				}
+			});
+
+			var groups = new Map();
+			wireData.forEach(function (wd, i) {
+				var r = find(i);
+				if (!groups.has(r)) groups.set(r, { name: '', wires: [] });
+				var g = groups.get(r);
+				if (wd.net) g.name = g.name || wd.net;
+				g.wires.push(i);
+			});
+
+			var hits = new Map();
+			function addHit(name, source, rule) {
+				if (!name) return;
+				if (!hits.has(name)) hits.set(name, { name: name, sources: [], rules: [] });
+				var h = hits.get(name);
+				if (source && h.sources.indexOf(source) < 0) h.sources.push(source);
+				if (rule && h.rules.indexOf(rule) < 0) h.rules.push(rule);
+			}
+
+			if (options.detectNetFlags) {
+				var flags = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.NET_FLAG, false)) || [];
+				flags.forEach(function (f) { addHit(f.getState_Net(), '网络标识', null); });
+			}
+
+			async function scanComponents(type, enabled, sourceLabel) {
+				if (!enabled) return;
+				var prims = (await eda.sch_PrimitiveComponent.getAll(type, false)) || [];
+				prims.forEach(function (p) {
+					var net = p.getState_Net();
+					if (!net) return;
+					var rule = matchNet(net);
+					if (rule) addHit(net, sourceLabel, rule);
+				});
+			}
+
+			await scanComponents(COMP_TYPE.NET_LABEL, options.matchNetLabels, '网络标签');
+			await scanComponents(COMP_TYPE.NET_PORT, options.matchNetPorts, '网络端口');
+
+			if (options.matchWires) {
+				wireData.forEach(function (wd) {
+					if (!wd.net) return;
+					var rule = matchNet(wd.net);
+					if (rule) addHit(wd.net, '导线', rule);
+				});
+			}
+
+			var nameSet = new Set(Array.from(hits.keys()));
+			var marked = new Set();
+			groups.forEach(function (g) {
+				if (g.name && nameSet.has(g.name)) g.wires.forEach(function (i) { marked.add(i); });
+			});
+
+			if (options.detectNetFlags) {
+				var flagsConn = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.NET_FLAG, false)) || [];
+				flagsConn.forEach(function (f) {
+					var net = f.getState_Net();
+					if (!net || !nameSet.has(net)) return;
+					var fx = f.getState_X(), fy = f.getState_Y();
+					var k = pkey(fx, fy);
+					var wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex(function (wd) {
+						return wd.segs.some(function (s) { return pointOnSeg(fx, fy, s); });
+					});
+					if (wi >= 0) groups.get(find(wi)).wires.forEach(function (i) { marked.add(i); });
+				});
+			}
+
+			var pinStubCandidates = [];
+			if (options.matchPins && pinMatchers.length > 0) {
+				var partsList = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.PART, false)) || [];
+				for (var pi = 0; pi < partsList.length; pi++) {
+					var part = partsList[pi];
+					var des = part.getState_Designator() || '';
+					var pins = [];
+					try { pins = (await part.getAllPins()) || []; } catch (e) { continue; }
+					for (var k2 = 0; k2 < pins.length; k2++) {
+						var p = pins[k2];
+						var forms = [des + '.' + (p.pinNumber || ''), des + '.' + (p.pinName || '')];
+						var ruleHit = null;
+						for (var mi = 0; mi < pinMatchers.length && !ruleHit; mi++) {
+							for (var fi = 0; fi < forms.length; fi++) {
+								if (pinMatchers[mi].re.test(forms[fi])) { ruleHit = pinMatchers[mi].name; break; }
+							}
+						}
+						if (!ruleHit) continue;
+						var label = des + '.' + (p.pinNumber || '?') + (p.pinName && p.pinName !== p.pinNumber ? '(' + p.pinName + ')' : '');
+						pinStubCandidates.push({ x: p.x, y: p.y, rotation: p.rotation || 0, label: label });
+						var key = pkey(p.x, p.y);
+						var wi = endpointMap.has(key) ? endpointMap.get(key)[0] : wireData.findIndex(function (wd) {
+							return wd.segs.some(function (s) { return pointOnSeg(p.x, p.y, s); });
+						});
+						if (wi >= 0) {
+							var g = groups.get(find(wi));
+							g.wires.forEach(function (i) { marked.add(i); });
+							addHit(g.name || label, '引脚规则', g.name ? null : ruleHit);
+						} else {
+							addHit(label, '引脚规则', ruleHit);
+						}
+					}
+				}
+			}
+
+			var markers = [];
+			function onMarkedWire(x, y) {
+				return wireData.some(function (wd, i) {
+					return marked.has(i) && wd.segs.some(function (s) { return pointOnSeg(x, y, s); });
+				});
+			}
+			wireData.forEach(function (wd, i) {
+				if (!marked.has(i)) return;
+				wd.segs.forEach(function (s) {
+					markers.push({ type: 'line', startX: s[0], startY: s[1], endX: s[2], endY: s[3] });
+				});
+			});
+
+			var flags = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.NET_FLAG, false)) || [];
+			for (var fi2 = 0; fi2 < flags.length; fi2++) {
+				var f = flags[fi2];
+				var net = f.getState_Net();
+				if (!net || !nameSet.has(net)) continue;
+				var ox = f.getState_X(), oy = f.getState_Y();
+				if (onMarkedWire(ox, oy)) continue;
+				var dx = 0, dy = -1;
+				try {
+					var attrs = (await eda.sch_PrimitiveAttribute.getAll(f.getState_PrimitiveId())) || [];
+					var nameAttr = attrs.find(function (a) { return a.getState_Key() === 'Global Net Name' && a.getState_Value() === net && a.getState_X() != null; });
+					if (nameAttr) {
+						var vx = nameAttr.getState_X() - ox, vy = nameAttr.getState_Y() - oy;
+						var len = Math.sqrt(vx * vx + vy * vy);
+						if (len > 5) { dx = -vx / len; dy = -vy / len; }
+					}
+				} catch (e) { /* 忽略 */ }
+				markers.push({ type: 'line', startX: ox, startY: oy, endX: ox + dx * PIN_STUB_LEN, endY: oy + dy * PIN_STUB_LEN });
+			}
+
+			pinStubCandidates.forEach(function (c) {
+				if (onMarkedWire(c.x, c.y)) return;
+				var dirs = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
+				var dir = dirs[c.rotation] || [1, 0];
+				markers.push({ type: 'line', startX: c.x, startY: c.y, endX: c.x + dir[0] * PIN_STUB_LEN, endY: c.y + dir[1] * PIN_STUB_LEN });
+			});
+
+			var hitList = Array.from(hits.values()).sort(function (a, b) { return a.name.localeCompare(b.name); });
+			var netNames = Array.from(nameSet).filter(function (n) { return n && n.indexOf('(') < 0; });
+			return { markers: markers, netNames: netNames, hitList: hitList, options: options };
+		})();
+	}
+
+	/* ===================== 界面逻辑 ===================== */
+
+	var state = { config: defaultConfig() };
+	var $ = function (id) { return document.getElementById(id); };
+
+	function setStatus(msg, cls) {
+		var el = $('status');
+		el.textContent = msg || '';
+		el.className = 'status-bar' + (cls ? ' ' + cls : '');
+	}
+
+	function renderOptions() {
+		var o = state.config.options;
+		$('optDetectNetFlags').checked = !!o.detectNetFlags;
+		$('optMatchNetLabels').checked = !!o.matchNetLabels;
+		$('optMatchNetPorts').checked = !!o.matchNetPorts;
+		$('optMatchWires').checked = !!o.matchWires;
+		$('optMatchPins').checked = !!o.matchPins;
+		$('optCaseInsensitive').checked = !!o.caseInsensitive;
+		$('optAlsoSelect').checked = !!o.alsoSelect;
+		$('optColor').value = o.highlightColor || DEFAULT_COLOR;
+		$('optLineWidth').value = o.lineWidth || 3;
+	}
+
+	function collectOptions() {
+		state.config.options = {
+			detectNetFlags: $('optDetectNetFlags').checked,
+			matchNetLabels: $('optMatchNetLabels').checked,
+			matchNetPorts: $('optMatchNetPorts').checked,
+			matchWires: $('optMatchWires').checked,
+			matchPins: $('optMatchPins').checked,
+			caseInsensitive: $('optCaseInsensitive').checked,
+			alsoSelect: $('optAlsoSelect').checked,
+			highlightColor: /^#[0-9a-fA-F]{6}$/.test($('optColor').value) ? $('optColor').value : DEFAULT_COLOR,
+			lineWidth: Math.min(10, Math.max(1, Number($('optLineWidth').value) || 3))
+		};
+	}
+
+	function renderRules() {
+		var tbody = $('rulesBody');
+		tbody.innerHTML = '';
+		state.config.rules.forEach(function (rule) {
+			var tr = document.createElement('tr');
+
+			var tdEn = document.createElement('td');
+			var cb = document.createElement('input');
+			cb.type = 'checkbox';
+			cb.checked = !!rule.enabled;
+			cb.onchange = function () { rule.enabled = cb.checked; };
+			tdEn.appendChild(cb);
+
+			var tdName = document.createElement('td');
+			var inpName = document.createElement('input');
+			inpName.type = 'text';
+			inpName.value = rule.name || '';
+			inpName.placeholder = '规则名称';
+			inpName.onchange = function () { rule.name = inpName.value; };
+			tdName.appendChild(inpName);
+
+			var tdPat = document.createElement('td');
+			var inpPat = document.createElement('input');
+			inpPat.type = 'text';
+			inpPat.value = rule.pattern || '';
+			inpPat.placeholder = rule.target === 'pin' ? 'U3.3 / U*.LX' : '*gnd*';
+			inpPat.onchange = function () { rule.pattern = inpPat.value; };
+			tdPat.appendChild(inpPat);
+
+			var tdTarget = document.createElement('td');
+			var sel = document.createElement('select');
+			[['net', '网络'], ['pin', '引脚']].forEach(function (opt) {
+				var o = document.createElement('option');
+				o.value = opt[0];
+				o.textContent = opt[1];
+				sel.appendChild(o);
+			});
+			sel.value = rule.target === 'pin' ? 'pin' : 'net';
+			sel.onchange = function () { rule.target = sel.value; };
+			tdTarget.appendChild(sel);
+
+			var tdType = document.createElement('td');
+			var badge = document.createElement('span');
+			badge.className = 'badge' + (rule.builtin ? ' builtin' : '');
+			badge.textContent = rule.builtin ? '内置' : '自定义';
+			tdType.appendChild(badge);
+
+			var tdOp = document.createElement('td');
+			var btn = document.createElement('button');
+			btn.className = 'danger-text';
+			btn.textContent = rule.builtin ? '禁用' : '删除';
+			btn.onclick = function () {
+				if (rule.builtin) {
+					rule.enabled = false;
+					renderRules();
+				} else {
+					state.config.rules = state.config.rules.filter(function (r) { return r !== rule; });
+					renderRules();
+				}
+			};
+			tdOp.appendChild(btn);
+
+			tr.appendChild(tdEn); tr.appendChild(tdName); tr.appendChild(tdPat); tr.appendChild(tdTarget); tr.appendChild(tdType); tr.appendChild(tdOp);
+			tbody.appendChild(tr);
+		});
+	}
+
+	function renderResult(hits) {
+		var el = $('result');
+		el.innerHTML = '';
+		if (!hits || hits.length === 0) {
+			el.innerHTML = '<span class="placeholder">未识别到电源网络</span>';
+			return;
+		}
+		hits.forEach(function (h) {
+			var div = document.createElement('div');
+			div.className = 'net-item';
+			var b = document.createElement('b');
+			b.textContent = h.name;
+			div.appendChild(b);
+			var src = document.createElement('span');
+			src.className = 'src';
+			src.textContent = h.sources.concat(h.rules.map(function (r) { return '规则:' + r; })).join('、');
+			div.appendChild(src);
+			el.appendChild(div);
+		});
+	}
+
+	async function saveConfig() {
+		collectOptions();
+		var ok = await eda.sys_Storage.setExtensionUserConfig(STORAGE_KEY, state.config);
+		if (ok) setStatus('配置已保存 ✓', 'ok');
+		else setStatus('配置保存失败', 'err');
+		return ok;
+	}
+
+	async function runDetect() {
+		try {
+			collectOptions();
+			setStatus('正在识别...', '');
+			var doc = await eda.dmt_SelectControl.getCurrentDocumentInfo();
+			if (!doc || doc.documentType !== DOC_TYPE_SCHEMATIC_PAGE) {
+				setStatus('请先在编辑器中打开一个原理图页面', 'err');
+				return;
+			}
+			var res = await detectPowerNets();
+			if (res.hitList.length === 0) {
+				renderResult([]);
+				setStatus('未识别到电源网络（可调整规则后重试）', 'err');
+				return;
+			}
+			await eda.dmt_EditorControl.removeIndicatorMarkers();
+			var ok = true;
+			if (res.markers.length > 0) {
+				ok = await eda.dmt_EditorControl.generateIndicatorMarkers(res.markers, parseColor(res.options.highlightColor), res.options.lineWidth, false, undefined);
+			}
+			if (!ok) {
+				setStatus('高亮失败', 'err');
+				return;
+			}
+			if (res.options.alsoSelect) eda.sch_SelectControl.doCrossProbeSelect([], [], res.netNames, false, true);
+			renderResult(res.hitList);
+			setStatus('已高亮 ' + res.hitList.length + ' 个电源网络 ✓', 'ok');
+		} catch (e) {
+			setStatus('执行出错: ' + (e && e.message ? e.message : String(e)), 'err');
+		}
+	}
+
+	async function clearHighlight() {
+		try {
+			await eda.dmt_EditorControl.removeIndicatorMarkers();
+			eda.sch_SelectControl.clearSelected();
+			eda.sch_SelectControl.doCrossProbeSelect([], [], [], false, false);
+			setStatus('已清除高亮', 'ok');
+		} catch (e) {
+			setStatus('清除失败: ' + (e && e.message ? e.message : String(e)), 'err');
+		}
+	}
+
+	function addRule(target) {
+		collectOptions();
+		state.config.rules.push({
+			id: 'u-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+			name: '',
+			pattern: '',
+			target: target,
+			enabled: true,
+			builtin: false
+		});
+		renderRules();
+	}
+
+	$('btnAddNetRule').onclick = function () { addRule('net'); };
+	$('btnAddPinRule').onclick = function () { addRule('pin'); };
+
+	$('btnRestore').onclick = function () {
+		eda.sys_Dialog.showConfirmationMessage('确定恢复全部内置默认规则？自定义规则将被清除。', '恢复默认', '确定', '取消', function (mainButtonClicked) {
+			if (!mainButtonClicked) return;
+			state.config = defaultConfig();
+			renderOptions();
+			renderRules();
+			setStatus('已恢复默认（尚未保存，请点击「保存配置」）', '');
+		});
+	};
+
+	$('btnSave').onclick = function () { saveConfig(); };
+	$('btnRun').onclick = function () { runDetect(); };
+	$('btnClear').onclick = function () { clearHighlight(); };
+	$('btnClose').onclick = function () { eda.sys_IFrame.closeIFrame('pnh-config'); };
+
+	state.config = loadConfig();
+	renderOptions();
+	renderRules();
+</script>
+</body>
+</html>

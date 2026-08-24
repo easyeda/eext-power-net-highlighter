@@ -1,0 +1,55 @@
+{
+	"name": "power-net-highlighter",
+	"uuid": "b12069c649e34c5484678c70dadaa9e9",
+	"displayName": "电源网络高亮助手",
+	"description": "一键识别项目原理图中的电源网络并高亮显示。支持内置规则与自定义通配符规则（如 *gnd*、vcc*、+*），基于网络标识符结构与规则双通道检测。",
+	"version": "1.1.3",
+	"publisher": "chenlong11",
+	"engines": {
+		"eda": "^3.2.0"
+	},
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "extension-store",
+		"url": "https://ext.lceda.cn/item/chenlong11/power-net-highlighter"
+	},
+	"categories": "Schematic",
+	"keywords": [
+		"Power",
+		"Net",
+		"Highlight",
+		"电源",
+		"高亮"
+	],
+	"images": {
+		"logo": "./images/logo.png"
+	},
+	"activationEvents": {},
+	"entry": "./dist/index",
+	"dependentExtensions": {},
+	"headerMenus": {
+		"sch": [
+			{
+				"id": "pnh-main-menu",
+				"title": "⚡ 电源网络",
+				"menuItems": [
+					{
+						"id": "pnh-detect",
+						"title": "识别并高亮电源网络",
+						"registerFn": "detectAndHighlight"
+					},
+					{
+						"id": "pnh-clear",
+						"title": "清除高亮",
+						"registerFn": "clearHighlight"
+					},
+					{
+						"id": "pnh-config",
+						"title": "规则配置...",
+						"registerFn": "openConfig"
+					}
+				]
+			}
+		]
+	}
+}

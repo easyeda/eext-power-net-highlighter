@@ -1,18 +1,10 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# 打包输出（由 package.ps1 生成）
+release/
 
-# Other files and folders
-.settings/
+# 开发调试产物（bridge 验证载荷与诊断结果）
+debug/
 
-# Executables
-*.swf
-*.air
-*.ipa
-*.apk
-
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# 系统文件
+Thumbs.db
+Desktop.ini
+.DS_Store
