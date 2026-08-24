@@ -11,7 +11,9 @@ if (Test-Path $out) { Remove-Item $out }
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
 try {
-	foreach ($rel in @('extension.json', 'dist/index.js', 'iframe/index.html', 'images/logo.png', 'README.md', 'CHANGELOG.md')) {
+	# 图片整目录打包（logo 及 README 引用的截图等），避免新增图片遗漏
+	$imageFiles = Get-ChildItem (Join-Path $root 'images') -File | ForEach-Object { 'images/' + $_.Name }
+	foreach ($rel in @('extension.json', 'dist/index.js', 'iframe/index.html', 'README.md', 'CHANGELOG.md') + $imageFiles) {
 		$src = Join-Path $root ($rel -replace '/', '\')
 		if (-not (Test-Path $src)) { throw "missing: $src" }
 		$entry = $zip.CreateEntry($rel)

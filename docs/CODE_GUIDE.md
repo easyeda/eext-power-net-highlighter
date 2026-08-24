@@ -110,9 +110,9 @@ power-net-highlighter/
 3. **T 型交叉合并**：对每个端点 key，用 `pointOnSeg()`（[dist/index.js:149](../dist/index.js#L149)，叉积共线 + 包围盒，容差 0.001）检查它是否落在**其他族**导线段中部，命中则 `union`——这就是"导线中间接了分支"的场景；
 4. 汇总为 `groups: Map<root, { name, wires[] }>`，组名取族内第一根有网络名的导线（可为空串）。
 
-### 5.4 四个检测通道（L220-313）→ 命中表 `hits`
+### 5.4 五个检测通道 → 命中表 `hits`
 
-`hits: Map<netName, { name, sources[], rules[] }>` 由 `addHit()` 去重累积，`sources` 记录来源（网络标识/网络标签/网络端口/导线/引脚规则），`rules` 记录命中的规则名。
+`hits: Map<netName, { name, sources[], rules[] }>` 由 `addHit()` 去重累积，`sources` 记录来源（网络标识/网络标签/网络端口/导线/引脚规则/贯通传播），`rules` 记录命中的规则名。
 
 | 通道 | 开关 | 逻辑 | 特点 |
 |---|---|---|---|
@@ -120,13 +120,16 @@ power-net-highlighter/
 | ② 网络标签 / 网络端口 | `matchNetLabels` / `matchNetPorts` | 对象网络名过 `netMatchers` 规则 | 依赖命名规范 |
 | ③ 导线网络名 | `matchWires` | 已加载的 `wireData.net` 过规则 | 默认关闭（标签已覆盖） |
 | ④ 引脚规则 | `matchPins` | 遍历 `part.getAllPins()`，`位号.引脚号` 与 `位号.引脚名` 两种形式分别过 `pinMatchers` | **支持无名称网络**：命中引脚按坐标挂到所属连通组，整组标记；组名缺失时以 `位号.引脚号(引脚名)` 作展示名 |
+| ⑤ 电源贯通传播 | `propagatePassThrough` | 2 引脚"贯通元件"（位号**字母前缀精确匹配**命中 `passThroughPrefixes`——`L1` 命中 `L`、`LED1` 的字母前缀 `LED` 不命中；或 `R` 前缀且 `Value`/`Resistance` 属性经 `parseResistanceOhms()` 解析 < `shuntThreshold`）两引脚各挂一个连通组，任一侧被标记则对侧整组也标记，循环至不动点 | 支持链式传播（L→L→R）；无名组以 `位号(贯通)` 作展示名，有名组把名字并入 `nameSet`（联动选中/符号 stub 随之生效） |
+
+通道④⑤共用「元件与引脚准备」段：`parts` 列表按需拉取一次；`pinCache`（Map，元件下标 → `getAllPins()` 结果/Promise）避免重复 await；`pinGroup(x,y)` 把引脚坐标映射到连通组根（endpointMap 命中 → pointOnSeg 回退 → null）。`parseResistanceOhms()` 支持 `100mΩ`/`5.1kΩ`/`0R05`/`R005`/`4R7`/`4k7`/`0.005` 等格式，m（毫）与 M（兆）按大小写区分。
 
 通道①还有第二步（L266-276）：对每个命中网络标识符，把**它所在位置连通**的整组导线也加入 `marked`——即使那些导线没有网络名。引脚通道同理（L303-307）。
 
 ### 5.5 标记生成（L259-263 + L316-323）
 
 - 按名标记：`groups` 中组名命中 `nameSet` 的导线下标进入 `marked` 集合；
-- 每个 `marked` 导线的每个线段生���一条 marker：`{ type:'line', startX, startY, endX, endY }`。
+- 每个 `marked` 导线的每个线段生成一条 marker：`{ type:'line', startX, startY, endX, endY }`。
 
 ### 5.6 短标识线 stub（L326-355）
 
@@ -162,6 +165,7 @@ power-net-highlighter/
   "options": {
     "detectNetFlags": true, "matchNetLabels": true, "matchNetPorts": true,
     "matchWires": false, "matchPins": true, "caseInsensitive": true,
+    "propagatePassThrough": true, "passThroughPrefixes": "L,FB", "shuntThreshold": 1,
     "alsoSelect": false, "highlightColor": "#e63228", "lineWidth": 3
   }
 }
@@ -204,5 +208,6 @@ iframe 的界面逻辑（L445-656）：`renderOptions/collectOptions`（选项 �
 | 改菜单项 | `extension.json` 的 `headerMenus.sch`（`registerFn` 对应 `dist/index.js` 顶层函数名） |
 | 改面板尺寸/标题 | `openConfig()` 的 `openIFrame` 参数（[dist/index.js:415](../dist/index.js#L415)） |
 | 调整连通性判定精度 | `pkey()` 的 1000 倍率与 `pointOnSeg()` 的 0.001 容差（两处） |
-| 加新检测通道 | 在 `detectPowerNets()` L220-313 区间加通道 + `DEFAULT_OPTIONS` 加开关 + iframe 面板加复选框（同步 iframe 检测副本） |
+| 加新检测通道 | 在 `detectPowerNets()` 通道区间加通道 + `DEFAULT_OPTIONS` 加开关 + iframe 面板加复选框（同步 iframe 检测副本） |
+| 调整贯通传播默认值 | `passThroughPrefixes` / `shuntThreshold` **两处**（`DEFAULT_OPTIONS` + `loadConfig` 校验回落值） |
 | 升级配置结构 | `defaultConfig().version` + `loadConfig()` 迁移逻辑（两处） |

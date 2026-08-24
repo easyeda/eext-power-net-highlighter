@@ -97,6 +97,11 @@
 		<label class="opt"><input type="checkbox" id="optMatchNetPorts"> 规则匹配网络端口</label>
 		<label class="opt"><input type="checkbox" id="optMatchWires"> 规则匹配导线网络名 <span class="hint">— 一般无需开启</span></label>
 		<label class="opt"><input type="checkbox" id="optMatchPins"> 引脚规则匹配 <span class="hint">— U3.3 / U*.LX 等引脚所在网络</span></label>
+		<label class="opt"><input type="checkbox" id="optPropagate"> 电源贯通传播 <span class="hint">— 电感/磁珠/毫欧电阻两端网络同为电源</span></label>
+		<div class="opt" style="padding-left:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--text-sec)">
+			<label>贯通位号前缀 <input type="text" id="optPassPrefixes" style="width:72px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></label>
+			<label>毫欧电阻阈值(Ω) <input type="number" id="optShuntThreshold" min="0" max="100" step="0.001" style="width:64px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px"></label>
+		</div>
 		<label class="opt"><input type="checkbox" id="optCaseInsensitive"> 规则匹配忽略大小写</label>
 		<label class="opt"><input type="checkbox" id="optAlsoSelect"> 高亮同时选中 <span class="hint">— 默认仅描线高亮</span></label>
 	</section>
@@ -163,7 +168,8 @@
 		{ id: 'b-avdd', name: '模拟电源 AVDD/AVCC', pattern: 'a*v*d*', target: 'net', enabled: false, builtin: true },
 		{ id: 'b-pin-lx', name: 'DCDC 开关节点 LX（引脚）', pattern: '*.lx', target: 'pin', enabled: true, builtin: true },
 		{ id: 'b-pin-ph', name: 'DCDC 开关节点 PH（引脚）', pattern: '*.ph', target: 'pin', enabled: true, builtin: true },
-		{ id: 'b-pin-sw', name: 'DCDC 开关节点 SW（引脚）', pattern: '*.sw', target: 'pin', enabled: false, builtin: true }
+		{ id: 'b-pin-sw', name: 'DCDC 开关节点 SW（引脚）', pattern: '*.sw', target: 'pin', enabled: false, builtin: true },
+		{ id: 'b-pin-vout', name: '稳压输出 VOUT（引脚）', pattern: '*.vout*', target: 'pin', enabled: true, builtin: true }
 	];
 
 	var DEFAULT_OPTIONS = {
@@ -173,6 +179,9 @@
 		matchWires: false,
 		matchPins: true,
 		caseInsensitive: true,
+		propagatePassThrough: true,
+		passThroughPrefixes: 'L,FB',
+		shuntThreshold: 1,
 		alsoSelect: false,
 		highlightColor: DEFAULT_COLOR,
 		lineWidth: 3
@@ -206,6 +215,10 @@
 			if (saved.options && typeof saved.options === 'object') cfg.options = Object.assign({}, DEFAULT_OPTIONS, saved.options);
 			if (typeof cfg.options.highlightColor !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(cfg.options.highlightColor)) cfg.options.highlightColor = DEFAULT_COLOR;
 			if (!(cfg.options.lineWidth >= 1 && cfg.options.lineWidth <= 10)) cfg.options.lineWidth = 3;
+			if (typeof cfg.options.passThroughPrefixes !== 'string' || !cfg.options.passThroughPrefixes.trim()) cfg.options.passThroughPrefixes = 'L,FB';
+			var st = Number(cfg.options.shuntThreshold);
+			if (!(st >= 0 && st <= 100)) cfg.options.shuntThreshold = 1;
+			else cfg.options.shuntThreshold = st;
 			return cfg;
 		} catch (e) {
 			return defaultConfig();
@@ -228,6 +241,24 @@
 	function parseColor(hex) {
 		var m = /^#?([0-9a-fA-F]{6})$/.test(hex) ? hex.slice(-6) : DEFAULT_COLOR.slice(-6);
 		return { r: parseInt(m.slice(0, 2), 16), g: parseInt(m.slice(2, 4), 16), b: parseInt(m.slice(4, 6), 16), alpha: 255 };
+	}
+
+	/* 与 dist/index.js 保持一致：阻值字符串 -> 欧姆数，失败返回 null */
+	function parseResistanceOhms(v) {
+		if (v == null) return null;
+		var s = String(v).replace(/[ΩΩΩ]/g, '').replace(/ohm/gi, '').replace(/±.*/, '').replace(/%.*/, '').trim();
+		var m;
+		if ((m = s.match(/^(\d*\.?\d+)\s*[rR]\s*(\d+\.?\d*)$/))) return parseFloat(m[1] + '.' + m[2]);
+		if ((m = s.match(/^[rR]\s*(\d+\.?\d*)$/))) return parseFloat('0.' + m[1].replace('.', ''));
+		if ((m = s.match(/^(\d*\.?\d+)\s*(?:[mM][eE][gG]|M)\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 1e6;
+		if ((m = s.match(/^(\d*\.?\d+)\s*[kK]\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 1000;
+		if ((m = s.match(/^(\d*\.?\d+)\s*m\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 0.001;
+		if ((m = s.match(/^(\d*\.?\d+)\s*[rR]$/))) return parseFloat(m[1]);
+		if ((m = s.match(/^(\d*\.?\d+)\s*[kK]$/))) return parseFloat(m[1]) * 1000;
+		if ((m = s.match(/^(\d*\.?\d+)\s*m$/))) return parseFloat(m[1]) * 0.001;
+		if ((m = s.match(/^(\d*\.?\d+)\s*M$/))) return parseFloat(m[1]) * 1e6;
+		if ((m = s.match(/^(\d*\.?\d+)$/))) return parseFloat(m[1]);
+		return null;
 	}
 
 	var pkey = function (x, y) { return Math.round(x * 1000) / 1000 + ',' + Math.round(y * 1000) / 1000; };
@@ -361,14 +392,35 @@
 				});
 			}
 
+			/* ---- 元件与引脚准备（引脚规则 + 贯通传播共用） ---- */
+			var passPrefixes = String(options.passThroughPrefixes || '').split(/[\s,;，、]+/).map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+			var shuntThreshold = Number(options.shuntThreshold) || 0;
+			var wantPinRules = !!options.matchPins && pinMatchers.length > 0;
+			var wantPropagation = !!options.propagatePassThrough && (passPrefixes.length > 0 || shuntThreshold > 0);
+			var partsList = (wantPinRules || wantPropagation) ? ((await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.PART, false)) || []) : [];
+			var pinCache = new Map();
+			var getPins = function (idx) {
+				if (!pinCache.has(idx)) {
+					var p2 = Promise.resolve().then(function () { return partsList[idx].getAllPins(); }).then(function (r) { return r || []; }, function () { return []; });
+					pinCache.set(idx, p2);
+				}
+				return pinCache.get(idx);
+			};
+			/* 引脚坐标 -> 所在导线连通组根（未连导线返回 null） */
+			var pinGroup = function (x, y) {
+				var k = pkey(x, y);
+				var wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex(function (wd) {
+					return wd.segs.some(function (s) { return pointOnSeg(x, y, s); });
+				});
+				return wi >= 0 ? find(wi) : null;
+			};
+
 			var pinStubCandidates = [];
-			if (options.matchPins && pinMatchers.length > 0) {
-				var partsList = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.PART, false)) || [];
+			if (wantPinRules) {
 				for (var pi = 0; pi < partsList.length; pi++) {
 					var part = partsList[pi];
 					var des = part.getState_Designator() || '';
-					var pins = [];
-					try { pins = (await part.getAllPins()) || []; } catch (e) { continue; }
+					var pins = await getPins(pi);
 					for (var k2 = 0; k2 < pins.length; k2++) {
 						var p = pins[k2];
 						var forms = [des + '.' + (p.pinNumber || ''), des + '.' + (p.pinName || '')];
@@ -381,17 +433,74 @@
 						if (!ruleHit) continue;
 						var label = des + '.' + (p.pinNumber || '?') + (p.pinName && p.pinName !== p.pinNumber ? '(' + p.pinName + ')' : '');
 						pinStubCandidates.push({ x: p.x, y: p.y, rotation: p.rotation || 0, label: label });
-						var key = pkey(p.x, p.y);
-						var wi = endpointMap.has(key) ? endpointMap.get(key)[0] : wireData.findIndex(function (wd) {
-							return wd.segs.some(function (s) { return pointOnSeg(p.x, p.y, s); });
-						});
-						if (wi >= 0) {
-							var g = groups.get(find(wi));
+						var root = pinGroup(p.x, p.y);
+						if (root != null) {
+							var g = groups.get(root);
 							g.wires.forEach(function (i) { marked.add(i); });
 							addHit(g.name || label, '引脚规则', g.name ? null : ruleHit);
 						} else {
 							addHit(label, '引脚规则', ruleHit);
 						}
+					}
+				}
+			}
+
+			/* ---- 通道五：电源贯通传播（电感/磁珠/毫欧电阻两端网络同为电源） ---- */
+			if (wantPropagation) {
+				var passComps = [];
+				for (var pj = 0; pj < partsList.length; pj++) {
+					var part2 = partsList[pj];
+					var des2 = part2.getState_Designator() || '';
+					/* 位号字母前缀精确匹配：L1/L2 命中 L，LED1/LS1 不命中（防 LED 等误判为电感） */
+					var am = /^([A-Za-z]+)/.exec(des2);
+					var alpha = am ? am[1].toUpperCase() : '';
+					var isPass = passPrefixes.indexOf(alpha) >= 0;
+					if (!isPass && shuntThreshold > 0 && alpha === 'R') {
+						var ohms = null;
+						try {
+							var attrs = (await eda.sch_PrimitiveAttribute.getAll(part2.getState_PrimitiveId())) || [];
+							var rkeys = ['Value', 'Resistance'];
+							for (var ri = 0; ri < rkeys.length && ohms == null; ri++) {
+								var a = attrs.find(function (x) { return x.getState_Key() === rkeys[ri]; });
+								if (a) ohms = parseResistanceOhms(a.getState_Value());
+							}
+						} catch (e) {
+							ohms = null;
+						}
+						isPass = ohms != null && ohms >= 0 && ohms < shuntThreshold;
+					}
+					if (!isPass) continue;
+					var pins2 = await getPins(pj);
+					if (pins2.length !== 2) continue;
+					var ga = pinGroup(pins2[0].x, pins2[0].y);
+					var gb = pinGroup(pins2[1].x, pins2[1].y);
+					if (ga == null || gb == null || ga === gb) continue;
+					passComps.push({ des: des2, ga: ga, gb: gb });
+				}
+				var groupMarked = function (root) {
+					return groups.get(root).wires.some(function (i) { return marked.has(i); });
+				};
+				var markGroup = function (root, des) {
+					var g2 = groups.get(root);
+					g2.wires.forEach(function (i) { marked.add(i); });
+					if (g2.name) {
+						nameSet.add(g2.name);
+						addHit(g2.name, '贯通传播·' + des, null);
+					} else {
+						addHit(des + '(贯通)', '贯通传播', null);
+					}
+				};
+				var changed = true;
+				while (changed) {
+					changed = false;
+					for (var ci = 0; ci < passComps.length; ci++) {
+						var c = passComps[ci];
+						var aM = groupMarked(c.ga);
+						var bM = groupMarked(c.gb);
+						if (aM === bM) continue;
+						changed = true;
+						if (aM) markGroup(c.gb, c.des);
+						else markGroup(c.ga, c.des);
 					}
 				}
 			}
@@ -460,6 +569,9 @@
 		$('optMatchNetPorts').checked = !!o.matchNetPorts;
 		$('optMatchWires').checked = !!o.matchWires;
 		$('optMatchPins').checked = !!o.matchPins;
+		$('optPropagate').checked = !!o.propagatePassThrough;
+		$('optPassPrefixes').value = o.passThroughPrefixes || 'L,FB';
+		$('optShuntThreshold').value = o.shuntThreshold != null ? o.shuntThreshold : 1;
 		$('optCaseInsensitive').checked = !!o.caseInsensitive;
 		$('optAlsoSelect').checked = !!o.alsoSelect;
 		$('optColor').value = o.highlightColor || DEFAULT_COLOR;
@@ -473,6 +585,9 @@
 			matchNetPorts: $('optMatchNetPorts').checked,
 			matchWires: $('optMatchWires').checked,
 			matchPins: $('optMatchPins').checked,
+			propagatePassThrough: $('optPropagate').checked,
+			passThroughPrefixes: $('optPassPrefixes').value.trim() || 'L,FB',
+			shuntThreshold: Math.min(100, Math.max(0, Number($('optShuntThreshold').value) || 0)),
 			caseInsensitive: $('optCaseInsensitive').checked,
 			alsoSelect: $('optAlsoSelect').checked,
 			highlightColor: /^#[0-9a-fA-F]{6}$/.test($('optColor').value) ? $('optColor').value : DEFAULT_COLOR,

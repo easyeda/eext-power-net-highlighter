@@ -6,6 +6,9 @@
  *  2. 网络名规则：通配符匹配网络标签 / 网络端口 / 导线网络名
  *  3. 引脚规则：通配符匹配 位号.引脚号 / 位号.引脚名（如 U3.3、U*.LX），
  *     命中引脚所在的物理网络整组高亮（支持无名称网络）
+ *  4. 电源贯通传播：电源网络跨 2 引脚电感/磁珠（位号字母前缀精确匹配 L、FB）
+ *     或毫欧级电阻
+ *     （R 前缀且阻值 < 阈值）后，对侧所在物理网络整组同为电源网络
  *
  * 高亮机制：dmt_EditorControl.generateIndicatorMarkers 沿导线画标记线
  *（不随点击消失，颜色线宽可配置），可另选中网络。
@@ -51,6 +54,7 @@ const BUILTIN_RULES = [
 	{ id: 'b-pin-lx', name: 'DCDC 开关节点 LX（引脚）', pattern: '*.lx', target: 'pin', enabled: true, builtin: true },
 	{ id: 'b-pin-ph', name: 'DCDC 开关节点 PH（引脚）', pattern: '*.ph', target: 'pin', enabled: true, builtin: true },
 	{ id: 'b-pin-sw', name: 'DCDC 开关节点 SW（引脚）', pattern: '*.sw', target: 'pin', enabled: false, builtin: true },
+	{ id: 'b-pin-vout', name: '稳压输出 VOUT（引脚）', pattern: '*.vout*', target: 'pin', enabled: true, builtin: true },
 ];
 
 const DEFAULT_OPTIONS = {
@@ -60,6 +64,9 @@ const DEFAULT_OPTIONS = {
 	matchWires: false,
 	matchPins: true,
 	caseInsensitive: true,
+	propagatePassThrough: true,
+	passThroughPrefixes: 'L,FB',
+	shuntThreshold: 1,
 	alsoSelect: false,
 	highlightColor: DEFAULT_COLOR,
 	lineWidth: 3,
@@ -101,6 +108,9 @@ function loadConfig() {
 		if (saved.options && typeof saved.options === 'object') cfg.options = { ...DEFAULT_OPTIONS, ...saved.options };
 		if (typeof cfg.options.highlightColor !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(cfg.options.highlightColor)) cfg.options.highlightColor = DEFAULT_COLOR;
 		if (!(cfg.options.lineWidth >= 1 && cfg.options.lineWidth <= 10)) cfg.options.lineWidth = 3;
+		if (typeof cfg.options.passThroughPrefixes !== 'string' || !cfg.options.passThroughPrefixes.trim()) cfg.options.passThroughPrefixes = 'L,FB';
+		if (!(Number(cfg.options.shuntThreshold) >= 0 && Number(cfg.options.shuntThreshold) <= 100)) cfg.options.shuntThreshold = 1;
+		else cfg.options.shuntThreshold = Number(cfg.options.shuntThreshold);
 		return cfg;
 	} catch (e) {
 		return defaultConfig();
@@ -123,6 +133,28 @@ function compilePattern(pattern, caseInsensitive) {
 function parseColor(hex) {
 	const m = /^#?([0-9a-fA-F]{6})$/.test(hex) ? hex.slice(-6) : DEFAULT_COLOR.slice(-6);
 	return { r: parseInt(m.slice(0, 2), 16), g: parseInt(m.slice(2, 4), 16), b: parseInt(m.slice(4, 6), 16), alpha: 255 };
+}
+
+/**
+ * 解析阻值字符串为欧姆数，失败返回 null。
+ * 支持：100mΩ / 5.1kΩ / 10k / 0.05R / R005 / 0R05 / 4R7 / 4k7 / 0.005 / 4M7 / 1meg；
+ * m（毫）与 M（兆）按大小写区分；Ω/ohm 与 % 容差后缀会被剔除。
+ */
+function parseResistanceOhms(v) {
+	if (v == null) return null;
+	let s = String(v).replace(/[ΩΩΩ]/g, '').replace(/ohm/gi, '').replace(/±.*/, '').replace(/%.*/, '').trim();
+	let m;
+	if ((m = s.match(/^(\d*\.?\d+)\s*[rR]\s*(\d+\.?\d*)$/))) return parseFloat(m[1] + '.' + m[2]);            // 0R05 / 4R7
+	if ((m = s.match(/^[rR]\s*(\d+\.?\d*)$/))) return parseFloat('0.' + m[1].replace('.', ''));               // R005 / R047
+	if ((m = s.match(/^(\d*\.?\d+)\s*(?:[mM][eE][gG]|M)\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 1e6; // 4M7 / 1M / 1meg
+	if ((m = s.match(/^(\d*\.?\d+)\s*[kK]\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 1000;              // 4k7 / 5.1k
+	if ((m = s.match(/^(\d*\.?\d+)\s*m\s*(\d*\.?\d*)$/))) return (parseFloat(m[1]) + (m[2] ? parseFloat(m[2]) / 10 : 0)) * 0.001;                // 100m / 4m7
+	if ((m = s.match(/^(\d*\.?\d+)\s*[rR]$/))) return parseFloat(m[1]);                                       // 10R / 0.05R
+	if ((m = s.match(/^(\d*\.?\d+)\s*[kK]$/))) return parseFloat(m[1]) * 1000;                                // 10k
+	if ((m = s.match(/^(\d*\.?\d+)\s*m$/))) return parseFloat(m[1]) * 0.001;                                  // 20m
+	if ((m = s.match(/^(\d*\.?\d+)\s*M$/))) return parseFloat(m[1]) * 1e6;                                    // 10M
+	if ((m = s.match(/^(\d*\.?\d+)$/))) return parseFloat(m[1]);                                              // 0.005 / 470
+	return null;
 }
 
 /* ===================== 几何与连通性 ===================== */
@@ -275,18 +307,39 @@ async function detectPowerNets() {
 		}
 	}
 
-	/* ---- 通道四：引脚规则（支持无名称网络，按连通性整组标记） ---- */
-	const pinStubCandidates = [];
-	if (options.matchPins && pinMatchers.length > 0) {
-		const parts = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.PART, false)) || [];
-		for (const part of parts) {
-			const des = part.getState_Designator() || '';
+	/* ---- 元件与引脚准备（引脚规则 + 贯通传播共用） ---- */
+	const passPrefixes = String(options.passThroughPrefixes || '').split(/[\s,;，、]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+	const shuntThreshold = Number(options.shuntThreshold) || 0;
+	const wantPinRules = !!options.matchPins && pinMatchers.length > 0;
+	const wantPropagation = !!options.propagatePassThrough && (passPrefixes.length > 0 || shuntThreshold > 0);
+	const parts = wantPinRules || wantPropagation ? ((await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.PART, false)) || []) : [];
+	const pinCache = new Map();
+	const getPins = async (idx) => {
+		if (!pinCache.has(idx)) {
 			let pins = [];
 			try {
-				pins = (await part.getAllPins()) || [];
+				pins = (await parts[idx].getAllPins()) || [];
 			} catch (e) {
-				continue;
+				pins = [];
 			}
+			pinCache.set(idx, pins);
+		}
+		return pinCache.get(idx);
+	};
+	/** 引脚坐标 -> 所在导线连通组根（未连导线返回 null） */
+	const pinGroup = (x, y) => {
+		const k = pkey(x, y);
+		const wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex((wd) => wd.segs.some((s) => pointOnSeg(x, y, s)));
+		return wi >= 0 ? find(wi) : null;
+	};
+
+	/* ---- 通道四：引脚规则（支持无名称网络，按连通性整组标记） ---- */
+	const pinStubCandidates = [];
+	if (wantPinRules) {
+		for (let pi = 0; pi < parts.length; pi++) {
+			const part = parts[pi];
+			const des = part.getState_Designator() || '';
+			const pins = await getPins(pi);
 			for (const p of pins) {
 				const forms = [des + '.' + (p.pinNumber || ''), des + '.' + (p.pinName || '')];
 				let ruleHit = null;
@@ -297,17 +350,74 @@ async function detectPowerNets() {
 					}
 				}
 				if (!ruleHit) continue;
-				const k = pkey(p.x, p.y);
 				const label = des + '.' + (p.pinNumber || '?') + (p.pinName && p.pinName !== p.pinNumber ? '(' + p.pinName + ')' : '');
 				pinStubCandidates.push({ x: p.x, y: p.y, rotation: p.rotation || 0, label });
-				const wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex((wd) => wd.segs.some((s) => pointOnSeg(p.x, p.y, s)));
-				if (wi >= 0) {
-					const g = groups.get(find(wi));
+				const root = pinGroup(p.x, p.y);
+				if (root != null) {
+					const g = groups.get(root);
 					for (const i of g.wires) marked.add(i);
 					addHit(g.name || label, '引脚规则', g.name ? null : ruleHit);
 				} else {
 					addHit(label, '引脚规则', ruleHit);
 				}
+			}
+		}
+	}
+
+	/* ---- 通道五：电源贯通传播（电感/磁珠/毫欧电阻两端网络同为电源） ---- */
+	if (wantPropagation) {
+		const passComps = [];
+		for (let pi = 0; pi < parts.length; pi++) {
+			const des = parts[pi].getState_Designator() || '';
+			/* 位号字母前缀精确匹配：L1/L2 命中 L，LED1/LS1 不命中（防 LED 等误判为电感） */
+			const am = /^([A-Za-z]+)/.exec(des);
+			const alpha = am ? am[1].toUpperCase() : '';
+			let isPass = passPrefixes.includes(alpha);
+			if (!isPass && shuntThreshold > 0 && alpha === 'R') {
+				let ohms = null;
+				try {
+					const attrs = (await eda.sch_PrimitiveAttribute.getAll(parts[pi].getState_PrimitiveId())) || [];
+					for (const key of ['Value', 'Resistance']) {
+						const a = attrs.find((x) => x.getState_Key() === key);
+						if (a) {
+							ohms = parseResistanceOhms(a.getState_Value());
+							if (ohms != null) break;
+						}
+					}
+				} catch (e) {
+					ohms = null;
+				}
+				isPass = ohms != null && ohms >= 0 && ohms < shuntThreshold;
+			}
+			if (!isPass) continue;
+			const pins = await getPins(pi);
+			if (pins.length !== 2) continue;
+			const ga = pinGroup(pins[0].x, pins[0].y);
+			const gb = pinGroup(pins[1].x, pins[1].y);
+			if (ga == null || gb == null || ga === gb) continue;
+			passComps.push({ des, ga, gb });
+		}
+		const groupMarked = (root) => groups.get(root).wires.some((i) => marked.has(i));
+		const markGroup = (root, des) => {
+			const g = groups.get(root);
+			for (const i of g.wires) marked.add(i);
+			if (g.name) {
+				nameSet.add(g.name);
+				addHit(g.name, '贯通传播·' + des, null);
+			} else {
+				addHit(des + '(贯通)', '贯通传播', null);
+			}
+		};
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const c of passComps) {
+				const aM = groupMarked(c.ga);
+				const bM = groupMarked(c.gb);
+				if (aM === bM) continue;
+				changed = true;
+				if (aM) markGroup(c.gb, c.des);
+				else markGroup(c.ga, c.des);
 			}
 		}
 	}
