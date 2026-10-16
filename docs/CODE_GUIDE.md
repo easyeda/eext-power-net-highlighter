@@ -108,7 +108,8 @@ power-net-highlighter/
 1. 每根导线初始自成一族（`parent` 数组 + 路径压缩 `find`）；
 2. **端点重合合并**：端点坐标经 `pkey()`（[dist/index.js:130](../dist/index.js#L130)，四舍五入到 0.001 精度）归一为 key，相同 key 的导线 `union`；
 3. **T 型交叉合并**：对每个端点 key，用 `pointOnSeg()`（[dist/index.js:149](../dist/index.js#L149)，叉积共线 + 包围盒，容差 0.001）检查它是否落在**其他族**导线段中部，命中则 `union`——这就是"导线中间接了分支"的场景；
-4. 汇总为 `groups: Map<root, { name, wires[] }>`，组名取族内第一根有网络名的导线（可为空串）。
+4. **短接标识符并组**：`short_symbol`（短接符，双引脚，`net` 为空）两引脚各自经 `wireIndexAt()`（端点优先、线段穿越回退）挂到导线，两侧导线族 `union`——同一短接符 = 电气短路，与 EDA 网络表语义一致；同时构建 `shortByPoint`（引脚坐标 → 对侧引脚），`pointGroup()` 在坐标未落线时沿短接链跳对侧（限深 4 级防环），供电源符号连通标记、引脚通道、贯通传播共用；
+5. 汇总为 `groups: Map<root, { name, wires[] }>`，组名取族内第一根有网络名的导线（可为空串）。按网络名标记分组时，组内**任一**导线网络名命中即整组标记（并组后可能多名称共存）。
 
 ### 5.4 五个检测通道 → 命中表 `hits`
 
@@ -122,9 +123,13 @@ power-net-highlighter/
 | ④ 引脚规则 | `matchPins` | 遍历 `part.getAllPins()`，`位号.引脚号` 与 `位号.引脚名` 两种形式分别过 `pinMatchers` | **支持无名称网络**：命中引脚按坐标挂到所属连通组，整组标记；组名缺失时以 `位号.引脚号(引脚名)` 作展示名 |
 | ⑤ 电源贯通传播 | `propagatePassThrough` | 2 引脚"贯通元件"（位号**字母前缀精确匹配**命中 `passThroughPrefixes`——`L1` 命中 `L`、`LED1` 的字母前缀 `LED` 不命中；或 `R` 前缀且 `Value`/`Resistance` 属性经 `parseResistanceOhms()` 解析 < `shuntThreshold`）两引脚各挂一个连通组，任一侧被标记则对侧整组也标记，循环至不动点 | 支持链式传播（L→L→R）；无名组以 `位号(贯通)` 作展示名，有名组把名字并入 `nameSet`（联动选中/符号 stub 随之生效） |
 
-通道④⑤共用「元件与引脚准备」段：`parts` 列表按需拉取一次；`pinCache`（Map，元件下标 → `getAllPins()` 结果/Promise）避免重复 await；`pinGroup(x,y)` 把引脚坐标映射到连通组根（endpointMap 命中 → pointOnSeg 回退 → null）。`parseResistanceOhms()` 支持 `100mΩ`/`5.1kΩ`/`0R05`/`R005`/`4R7`/`4k7`/`0.005` 等格式，m（毫）与 M（兆）按大小写区分。
+通道④⑤共用「元件与引脚准备」段：`parts` 列表按需拉取一次；`pinCache`（Map，元件下标 → `getAllPins()` 结果/Promise）避免重复 await；`pinGroup(x,y)` 即 `pointGroup(x,y)`，把引脚坐标映射到连通组根（endpointMap 命中 → pointOnSeg 回退 → 短接符引脓跳对侧 → null）。`parseResistanceOhms()` 支持 `100mΩ`/`5.1kΩ`/`0R05`/`R005`/`4R7`/`4k7`/`0.005` 等格式，m（毫）与 M（兆）按大小写区分。
 
 通道①还有第二步（L266-276）：对每个命中网络标识符，把**它所在位置连通**的整组导线也加入 `marked`——即使那些导线没有网络名。引脚通道同理（L303-307）。
+
+### 5.4b 同名网络并组闭包
+
+各检测通道结束后、生成标记前，与通道五贯通传播**交替执行至全局不动点**（`propagateAll()` 与 `sameNamePass()` 在外层 while 中轮转：被标记组内出现的所有网络名（含经短接符并入的信号名）加入 `nameSet` 并以「同名并组」来源记入命中表；页面上其他位置的同名导线组（仅靠网络名连接、无几何连通）整组加入 `marked`。闭包新标记的组可能再触发传播，传播并入的名称也可能再扩散）。语义依据：EDA 网络表中同名网络即同一网络。
 
 ### 5.5 标记生成（L259-263 + L316-323）
 

@@ -2,16 +2,16 @@
 	"name": "power-net-highlighter",
 	"uuid": "b12069c649e34c5484678c70dadaa9e9",
 	"displayName": "电源网络高亮助手",
-	"description": "一键识别项目原理图中的电源网络并高亮显示。支持内置规则与自定义通配符规则（如 *gnd*、vcc*、+*），基于网络标识符结构与规则双通道检测，并支持电感/磁珠/毫欧电阻电源贯通传播。",
-	"version": "1.2.1",
-	"publisher": "chenlong11",
+	"description": "一键识别项目原理图中的电源网络并高亮显示。支持内置规则与自定义通配符规则（如 *gnd*、vcc*、+*），基于网络标识符结构与规则双通道检测，并支持电感/磁珠/毫欧电阻电源贯通传播与短接标识符短路并组。",
+	"version": "1.2.2",
+	"publisher": "EasyEDA",
 	"engines": {
 		"eda": "^3.2.0"
 	},
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "extension-store",
-		"url": "https://ext.lceda.cn/item/chenlong11/power-net-highlighter"
+		"url": "https://github.com/easyeda/eext-power-net-highlighter"
 	},
 	"categories": "Schematic",
 	"keywords": [

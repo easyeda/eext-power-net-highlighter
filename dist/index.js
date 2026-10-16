@@ -9,6 +9,10 @@
  *  4. 电源贯通传播：电源网络跨 2 引脚电感/磁珠（位号字母前缀精确匹配 L、FB）
  *     或毫欧级电阻
  *     （R 前缀且阻值 < 阈值）后，对侧所在物理网络整组同为电源网络
+ *  5. 短接标识符：短接符（short_symbol，双引脚）两引脚所连导线组直接并组
+ *     （同一短接符 = 电气短路，视为同一网络），上述各通道均按并组后的连通性执行；
+ *     被标记组内的网络名（含经短接符并入的信号名）按同名并组闭包传播，
+ *     页面上其他位置的同名导线组（仅靠网络名连接）一并高亮
  *
  * 高亮机制：dmt_EditorControl.generateIndicatorMarkers 沿导线画标记线
  *（不随点击消失，颜色线宽可配置），可另选中网络。
@@ -28,6 +32,7 @@ const COMP_TYPE = {
 	NET_FLAG: 'netflag',
 	NET_LABEL: 'netlabel',
 	NET_PORT: 'netport',
+	SHORT_SYMBOL: 'short_symbol',
 };
 
 /** EDMT_EditorDocumentType.SCHEMATIC_PAGE = 1 */
@@ -239,6 +244,41 @@ async function detectPowerNets() {
 			if (wireData[j].segs.some((s) => pointOnSeg(px, py, s))) union(root, j);
 		}
 	}
+
+	/* ---- 短接标识符：同一短接符两引脚所连导线并组（电气短路视为同一网络） ---- */
+	const shortLinks = [];
+	const shortByPoint = new Map();
+	{
+		const shorts = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.SHORT_SYMBOL, false)) || [];
+		for (const s of shorts) {
+			const pins = (await s.getAllPins()) || [];
+			if (pins.length < 2) continue;
+			shortLinks.push(pins);
+			shortByPoint.set(pkey(pins[0].x, pins[0].y), pins[1]);
+			shortByPoint.set(pkey(pins[1].x, pins[1].y), pins[0]);
+		}
+	}
+	/** 坐标 -> 命中导线下标（端点优先，其次线段穿越），未命中返回 -1 */
+	const wireIndexAt = (x, y) => {
+		const k = pkey(x, y);
+		return endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex((wd) => wd.segs.some((s) => pointOnSeg(x, y, s)));
+	};
+	for (const pins of shortLinks) {
+		const ia = wireIndexAt(pins[0].x, pins[0].y);
+		const ib = wireIndexAt(pins[1].x, pins[1].y);
+		if (ia >= 0 && ib >= 0) union(ia, ib);
+	}
+	/** 坐标 -> 所在导线连通组根（未连导线返回 null）；坐标落在短接符引脚上时沿短接链跳对侧（限深防环） */
+	const pointGroup = (x, y, depth = 0) => {
+		const wi = wireIndexAt(x, y);
+		if (wi >= 0) return find(wi);
+		if (depth < 4) {
+			const other = shortByPoint.get(pkey(x, y));
+			if (other) return pointGroup(other.x, other.y, depth + 1);
+		}
+		return null;
+	};
+
 	const groups = new Map();
 	wireData.forEach((wd, i) => {
 		const r = find(i);
@@ -287,23 +327,21 @@ async function detectPowerNets() {
 		}
 	}
 
-	/* ---- 标记命中名称对应的导线分组 ---- */
+	/* ---- 标记命中名称对应的导线分组（组内任一导线网络名命中即整组标记，覆盖并组后多名称共存） ---- */
 	const nameSet = new Set([...hits.keys()]);
 	const marked = new Set();
 	for (const g of groups.values()) {
-		if (g.name && nameSet.has(g.name)) for (const i of g.wires) marked.add(i);
+		if (g.wires.some((i) => wireData[i].net && nameSet.has(wireData[i].net))) for (const i of g.wires) marked.add(i);
 	}
 
-	/* ---- 电源标识符连通性标记：标识符所连导线整组描线（导线可无网络名） ---- */
+	/* ---- 电源标识符连通性标记：标识符所连导线整组描线（导线可无网络名；经短接符相连时跳到对侧组） ---- */
 	if (options.detectNetFlags) {
 		const flags = (await eda.sch_PrimitiveComponent.getAll(COMP_TYPE.NET_FLAG, false)) || [];
 		for (const f of flags) {
 			const net = f.getState_Net();
 			if (!net || !nameSet.has(net)) continue;
-			const ox = f.getState_X(), oy = f.getState_Y();
-			const k = pkey(ox, oy);
-			const wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex((wd) => wd.segs.some((s) => pointOnSeg(ox, oy, s)));
-			if (wi >= 0) for (const i of groups.get(find(wi)).wires) marked.add(i);
+			const root = pointGroup(f.getState_X(), f.getState_Y());
+			if (root != null) for (const i of groups.get(root).wires) marked.add(i);
 		}
 	}
 
@@ -326,12 +364,8 @@ async function detectPowerNets() {
 		}
 		return pinCache.get(idx);
 	};
-	/** 引脚坐标 -> 所在导线连通组根（未连导线返回 null） */
-	const pinGroup = (x, y) => {
-		const k = pkey(x, y);
-		const wi = endpointMap.has(k) ? endpointMap.get(k)[0] : wireData.findIndex((wd) => wd.segs.some((s) => pointOnSeg(x, y, s)));
-		return wi >= 0 ? find(wi) : null;
-	};
+	/** 引脚坐标 -> 所在导线连通组根（pointGroup：经短接符相连时跳到对侧组，未连导线返回 null） */
+	const pinGroup = (x, y) => pointGroup(x, y);
 
 	/* ---- 通道四：引脚规则（支持无名称网络，按连通性整组标记） ---- */
 	const pinStubCandidates = [];
@@ -363,6 +397,9 @@ async function detectPowerNets() {
 			}
 		}
 	}
+
+	/** 贯通传播一轮（内部迭代至本轮不动点），返回本轮是否有新增标记；wantPropagation 时由通道五段赋值 */
+	let propagateAll = null;
 
 	/* ---- 通道五：电源贯通传播（电感/磁珠/毫欧电阻两端网络同为电源） ---- */
 	if (wantPropagation) {
@@ -408,18 +445,59 @@ async function detectPowerNets() {
 				addHit(des + '(贯通)', '贯通传播', null);
 			}
 		};
-		let changed = true;
-		while (changed) {
-			changed = false;
-			for (const c of passComps) {
-				const aM = groupMarked(c.ga);
-				const bM = groupMarked(c.gb);
-				if (aM === bM) continue;
-				changed = true;
-				if (aM) markGroup(c.gb, c.des);
-				else markGroup(c.ga, c.des);
+		/** 贯通传播一轮（内部迭代至本轮不动点），返回本轮是否有新增标记 */
+		propagateAll = () => {
+			let any = false;
+			let changed = true;
+			while (changed) {
+				changed = false;
+				for (const c of passComps) {
+					const aM = groupMarked(c.ga);
+					const bM = groupMarked(c.gb);
+					if (aM === bM) continue;
+					changed = true;
+					any = true;
+					if (aM) markGroup(c.gb, c.des);
+					else markGroup(c.ga, c.des);
+				}
+			}
+			return any;
+		};
+	}
+
+	/* ---- 同名网络并组闭包（一轮）：被标记组内出现的网络名全部视为电源网络名，页面上其他位置的同名导线组（仅靠网络名连接、无几何连通）一并标记 ---- */
+	const sameNamePass = () => {
+		let changed = false;
+		for (const g of groups.values()) {
+			if (!g.wires.some((i) => marked.has(i))) continue;
+			for (const i of g.wires) {
+				const n = wireData[i].net;
+				if (n && !nameSet.has(n)) {
+					nameSet.add(n);
+					addHit(n, '同名并组', null);
+					changed = true;
+				}
 			}
 		}
+		for (const g of groups.values()) {
+			if (g.wires.some((i) => wireData[i].net && nameSet.has(wireData[i].net))) {
+				for (const i of g.wires) {
+					if (!marked.has(i)) {
+						marked.add(i);
+						changed = true;
+					}
+				}
+			}
+		}
+		return changed;
+	};
+
+	/* ---- 贯通传播与同名并组交替执行至全局不动点：闭包新标记的组可能再触发传播（如 IN+ 经同名闭包标记后，其对侧 10mΩ 电阻才传播 IN-），传播并入的信号名也可能再扩散，交替直到双方均无新增 ---- */
+	let outer = true;
+	while (outer) {
+		outer = false;
+		if (propagateAll && propagateAll()) outer = true;
+		while (sameNamePass()) outer = true;
 	}
 
 	/* ---- 生成标记：导线描线 ---- */
